@@ -120,7 +120,7 @@ def run_transfer(session: dict, options: dict) -> None:
                     f"{'MATCHED' if video_id else 'FAILED'} (score={score:.0f})"
                 )
 
-            time.sleep(0.4)
+            time.sleep(0.2)
 
         # Phase 3: Transfer liked songs
         if options.get("liked_songs") and liked:

@@ -4,17 +4,6 @@ from app.config import settings
 
 _TOKEN_KEYS = {"scope", "token_type", "access_token", "refresh_token", "expires_at", "expires_in"}
 
-# Unauthenticated client for search (avoids 400 errors with OAuth)
-_search_client: YTMusic | None = None
-
-
-def get_search_client() -> YTMusic:
-    """Get an unauthenticated YTMusic client for search operations."""
-    global _search_client
-    if _search_client is None:
-        _search_client = YTMusic()
-    return _search_client
-
 
 def get_oauth_credentials() -> OAuthCredentials:
     return OAuthCredentials(

@@ -168,26 +168,24 @@ async def debug_session(request: Request, response: Response):
 
 
 @app.get("/debug/search")
-async def debug_search(request: Request, response: Response, q: str = "PinkPantheress Stateside"):
-    """Test YouTube Music search — no auth needed. Usage: /debug/search?q=artist+title"""
-    from ytmusicapi import YTMusic as _YT
+async def debug_search(q: str = "PinkPantheress Stateside"):
+    """Test yt-dlp search. No auth needed. Usage: /debug/search?q=artist+title"""
     try:
-        # Create a fresh unauthenticated client every time for testing
-        yt = _YT()
-        results = yt.search(q, filter="songs", limit=3)
+        import yt_dlp
+        opts = {"quiet": True, "no_warnings": True, "extract_flat": True}
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            results = ydl.extract_info(f"ytsearch3:{q}", download=False)
         return {
             "query": q,
-            "client": "unauthenticated",
+            "api": "yt-dlp",
             "results": [
                 {
-                    "title": r.get("title"),
-                    "artists": [a.get("name") for a in r.get("artists", [])],
-                    "videoId": r.get("videoId"),
-                    "resultType": r.get("resultType"),
-                    "duration": r.get("duration"),
-                    "duration_seconds": r.get("duration_seconds"),
+                    "videoId": e.get("id"),
+                    "title": e.get("title"),
+                    "channel": e.get("channel") or e.get("uploader"),
+                    "duration": e.get("duration"),
                 }
-                for r in (results or [])[:3]
+                for e in results.get("entries", [])[:3]
             ],
         }
     except Exception as e:
