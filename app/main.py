@@ -169,17 +169,16 @@ async def debug_session(request: Request, response: Response):
 
 @app.get("/debug/search")
 async def debug_search(request: Request, response: Response, q: str = "PinkPantheress Stateside"):
-    """Test YouTube Music search directly. Usage: /debug/search?q=artist+title"""
-    session = ensure_session(request, response)
-    yt = get_ytmusic_client(session)
-    if not yt:
-        return {"error": "YouTube Music not connected"}
+    """Test YouTube Music search — no auth needed. Usage: /debug/search?q=artist+title"""
+    from ytmusicapi import YTMusic as _YT
     try:
-        results_songs = yt.search(q, filter="songs", limit=3)
-        results_any = yt.search(q, limit=3)
+        # Create a fresh unauthenticated client every time for testing
+        yt = _YT()
+        results = yt.search(q, filter="songs", limit=3)
         return {
             "query": q,
-            "songs_filter": [
+            "client": "unauthenticated",
+            "results": [
                 {
                     "title": r.get("title"),
                     "artists": [a.get("name") for a in r.get("artists", [])],
@@ -188,21 +187,12 @@ async def debug_search(request: Request, response: Response, q: str = "PinkPanth
                     "duration": r.get("duration"),
                     "duration_seconds": r.get("duration_seconds"),
                 }
-                for r in (results_songs or [])[:3]
-            ],
-            "no_filter": [
-                {
-                    "title": r.get("title"),
-                    "artists": [a.get("name") for a in r.get("artists", [])],
-                    "videoId": r.get("videoId"),
-                    "resultType": r.get("resultType"),
-                    "category": r.get("category"),
-                }
-                for r in (results_any or [])[:5]
+                for r in (results or [])[:3]
             ],
         }
     except Exception as e:
-        return {"error": f"{type(e).__name__}: {e}"}
+        import traceback
+        return {"error": f"{type(e).__name__}: {e}", "traceback": traceback.format_exc()}
 
 
 # --- Static files & index ---
