@@ -13,6 +13,7 @@ from app.auth.spotify_auth import get_spotify_oauth, get_spotify_client
 from app.auth.ytmusic_auth import start_device_flow, poll_device_flow, get_ytmusic_client
 from app.services.spotify_service import fetch_liked_songs, fetch_playlists, fetch_followed_artists
 from app.services.transfer import run_transfer
+from app.services.dedup import run_dedup
 
 app = FastAPI(title="Spotify to YouTube Music Transfer")
 
@@ -137,6 +138,46 @@ async def transfer_progress(request: Request):
 
         while True:
             state = session.get("transfer_state", {})
+            yield {"event": "progress", "data": json.dumps(state)}
+            if state.get("done"):
+                break
+            await asyncio.sleep(1)
+
+    return EventSourceResponse(event_generator())
+
+
+# --- Dedup ---
+@app.get("/dedup", response_class=HTMLResponse)
+async def dedup_page():
+    with open("app/static/dedup.html") as f:
+        return f.read()
+
+
+@app.post("/dedup/start")
+async def dedup_start(request: Request, response: Response):
+    session = ensure_session(request, response)
+    session["dedup_state"] = {}
+    thread = threading.Thread(target=run_dedup, args=(session,), daemon=True)
+    thread.start()
+    return {"status": "started"}
+
+
+@app.get("/dedup/progress")
+async def dedup_progress(request: Request):
+    session = get_session(request)
+    if not session:
+        async def error_gen():
+            yield {"event": "progress", "data": json.dumps({"done": True, "error": "No session found."})}
+        return EventSourceResponse(error_gen())
+
+    async def event_generator():
+        for _ in range(10):
+            state = session.get("dedup_state")
+            if state and state.get("phase"):
+                break
+            await asyncio.sleep(0.5)
+        while True:
+            state = session.get("dedup_state", {})
             yield {"event": "progress", "data": json.dumps(state)}
             if state.get("done"):
                 break
