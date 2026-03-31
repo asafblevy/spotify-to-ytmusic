@@ -204,44 +204,65 @@ async def bulk_like_playlists(request: Request, response: Response):
         return {"error": f"{type(e).__name__}: {e}"}
 
 
-@app.post("/bulk-like/start")
-async def bulk_like_start(request: Request, response: Response):
+@app.get("/bulk-like/videos")
+async def bulk_like_videos(request: Request, response: Response, playlist_id: str = ""):
+    """Fetch all video IDs in a playlist (server-side, minimal quota use)."""
     session = ensure_session(request, response)
-    body = await request.json()
-    playlist_id = body.get("playlist_id")
     if not playlist_id:
         return JSONResponse({"error": "No playlist_id"}, status_code=400)
-    # Preserve already_liked_ids from previous run for resume support
-    prev_state = session.get("bulk_like_state", {})
-    prev_liked = prev_state.get("already_liked_ids", []) if prev_state.get("playlist_id") == playlist_id else []
-    session["bulk_like_state"] = {"already_liked_ids": prev_liked}
-    thread = threading.Thread(target=run_bulk_like, args=(session, playlist_id), daemon=True)
-    thread.start()
-    return {"status": "started"}
+    try:
+        from app.services.bulk_like import _get_youtube
+        youtube = _get_youtube(session)
+        videos = []
+        req = youtube.playlistItems().list(
+            part="snippet,contentDetails", playlistId=playlist_id, maxResults=50
+        )
+        while req:
+            resp = req.execute()
+            for item in resp.get("items", []):
+                videos.append({
+                    "videoId": item["contentDetails"]["videoId"],
+                    "title": item["snippet"].get("title", "Unknown"),
+                })
+            req = youtube.playlistItems().list_next(req, resp)
+        return {"videos": videos}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
 
 
-@app.get("/bulk-like/progress")
-async def bulk_like_progress(request: Request):
-    session = get_session(request)
-    if not session:
-        async def error_gen():
-            yield {"event": "progress", "data": json.dumps({"done": True, "error": "No session found."})}
-        return EventSourceResponse(error_gen())
+@app.get("/auth/ytmusic/token")
+async def ytmusic_token(request: Request, response: Response):
+    """Return the current access token for client-side API calls."""
+    session = ensure_session(request, response)
+    token = session.get("ytmusic_token", {})
+    return {"access_token": token.get("access_token")}
 
-    async def event_generator():
-        for _ in range(10):
-            state = session.get("bulk_like_state")
-            if state and state.get("phase"):
-                break
-            await asyncio.sleep(0.5)
-        while True:
-            state = session.get("bulk_like_state", {})
-            yield {"event": "progress", "data": json.dumps(state)}
-            if state.get("done"):
-                break
-            await asyncio.sleep(1)
 
-    return EventSourceResponse(event_generator())
+@app.post("/auth/ytmusic/refresh")
+async def ytmusic_refresh(request: Request, response: Response):
+    """Refresh the YouTube OAuth token and return the new access token."""
+    session = ensure_session(request, response)
+    token = session.get("ytmusic_token", {})
+    refresh_token = token.get("refresh_token")
+    if not refresh_token:
+        return JSONResponse({"error": "No refresh token"}, status_code=401)
+    try:
+        from google.oauth2.credentials import Credentials
+        creds = Credentials(
+            token=token.get("access_token"),
+            refresh_token=refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=settings.google_client_id,
+            client_secret=settings.google_client_secret,
+        )
+        import google.auth.transport.requests
+        creds.refresh(google.auth.transport.requests.Request())
+        # Update session
+        session["ytmusic_token"]["access_token"] = creds.token
+        save_yt_token(response, session["ytmusic_token"])
+        return {"access_token": creds.token}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 # --- Logout ---

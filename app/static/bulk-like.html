@@ -36,6 +36,7 @@
       <h3>Select a Playlist</h3>
       <p style="color:#aaa;font-size:0.85rem;margin-bottom:12px">
         Every song in the selected playlist will be added to your Liked Music.
+        This runs in your browser — no API quota limits.
       </p>
       <div id="playlist-list"></div>
     </div>
@@ -45,6 +46,7 @@
   <div id="progress-section" class="section hidden">
     <div class="card">
       <h3>Liking Songs...</h3>
+      <p style="color:#888;font-size:0.8rem;margin-bottom:12px">Keep this tab open — runs in your browser</p>
       <div class="phase-text" id="phase-text">Starting...</div>
       <div class="progress-bar"><div class="fill" id="progress-fill" style="width:0%"></div></div>
       <div class="counters">
@@ -64,11 +66,6 @@
         <span class="matched">Liked: <strong id="final-liked">0</strong></span>
         <span class="failed">Failed: <strong id="final-failed">0</strong></span>
       </div>
-      <div id="resume-container" class="hidden">
-        <button class="btn btn-transfer" id="resume-btn" onclick="resumeLike()" style="margin-bottom:12px">
-          Resume Liking (quota resets at midnight PT)
-        </button>
-      </div>
       <div class="log" id="done-log"></div>
     </div>
     <a href="/" class="btn btn-logout" style="display:block;text-align:center;text-decoration:none;margin-top:12px">Back to Transfer</a>
@@ -76,7 +73,7 @@
 
   <script>
     let ytPollTimer = null;
-    let lastPlaylistId = null;
+    let accessToken = null;
 
     async function init() {
       const res = await fetch("/auth/status");
@@ -84,6 +81,10 @@
       if (data.ytmusic) {
         document.getElementById("yt-disconnected").classList.add("hidden");
         document.getElementById("yt-connected").classList.remove("hidden");
+        // Get the access token for client-side API calls
+        const tokenRes = await fetch("/auth/ytmusic/token");
+        const tokenData = await tokenRes.json();
+        accessToken = tokenData.access_token;
         loadPlaylists();
       }
     }
@@ -107,6 +108,9 @@
         clearInterval(ytPollTimer);
         document.getElementById("yt-device-code").classList.add("hidden");
         document.getElementById("yt-connected").classList.remove("hidden");
+        const tokenRes = await fetch("/auth/ytmusic/token");
+        const tokenData = await tokenRes.json();
+        accessToken = tokenData.access_token;
         loadPlaylists();
       }
     }
@@ -133,90 +137,125 @@
     }
 
     async function startBulkLike(playlistId) {
-      lastPlaylistId = playlistId;
       document.getElementById("select-section").classList.add("hidden");
       document.getElementById("auth-section").classList.add("hidden");
-      document.getElementById("done-section").classList.add("hidden");
       document.getElementById("progress-section").classList.remove("hidden");
 
-      await fetch("/bulk-like/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playlist_id: playlistId }),
-      });
+      // Fetch all video IDs from the playlist (server-side, uses 1 quota unit per 50 items)
+      addLog("Fetching playlist tracks...");
+      const res = await fetch("/bulk-like/videos?playlist_id=" + playlistId);
+      const data = await res.json();
 
-      listenProgress();
-    }
-
-    function listenProgress() {
-      const evtSource = new EventSource("/bulk-like/progress");
-      evtSource.addEventListener("progress", (e) => {
-        const state = JSON.parse(e.data);
-        updateProgress(state);
-        if (state.done) {
-          evtSource.close();
-          showDone(state);
-        }
-      });
-      evtSource.onerror = () => evtSource.close();
-    }
-
-    async function resumeLike() {
-      if (!lastPlaylistId) return;
-      document.getElementById("done-section").classList.add("hidden");
-      document.getElementById("progress-section").classList.remove("hidden");
-
-      // Start again — server remembers already-liked IDs in session
-      await fetch("/bulk-like/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playlist_id: lastPlaylistId }),
-      });
-
-      listenProgress();
-    }
-
-    function updateProgress(state) {
-      document.getElementById("phase-text").textContent = state.phase || "Working...";
-      const total = state.total || 1;
-      const pct = Math.round((state.processed / total) * 100);
-      document.getElementById("progress-fill").style.width = pct + "%";
-      document.getElementById("cnt-progress").textContent = state.processed + "/" + state.total;
-      document.getElementById("cnt-liked").textContent = state.liked || 0;
-      document.getElementById("cnt-failed").textContent = state.failed || 0;
-
-      const logEl = document.getElementById("log");
-      const logs = state.log || [];
-      logEl.innerHTML = logs.map(l => "<div>" + esc(l) + "</div>").join("");
-      logEl.scrollTop = logEl.scrollHeight;
-    }
-
-    function showDone(state) {
-      document.getElementById("progress-section").classList.add("hidden");
-      document.getElementById("done-section").classList.remove("hidden");
-
-      if (state.error) {
-        document.getElementById("done-title").textContent = "Failed";
-        document.getElementById("done-title").style.color = "#ef5350";
-        document.getElementById("done-body").innerHTML = '<span style="color:#ef5350">' + esc(state.error) + '</span>';
-      } else if (state.quota_hit) {
-        document.getElementById("done-title").textContent = "Paused — Quota Reached";
-        document.getElementById("done-title").style.color = "#ff9800";
-        const totalLiked = (state.already_liked_ids || []).length;
-        document.getElementById("done-body").innerHTML =
-          '<span class="matched">Liked so far: <strong>' + totalLiked + '</strong></span>';
-        document.getElementById("resume-container").classList.remove("hidden");
-      } else {
-        document.getElementById("done-title").textContent = "Complete";
-        document.getElementById("done-title").style.color = "";
-        document.getElementById("final-liked").textContent = state.liked || 0;
-        document.getElementById("final-failed").textContent = state.failed || 0;
-        document.getElementById("resume-container").classList.add("hidden");
+      if (data.error) {
+        showError(data.error);
+        return;
       }
 
-      const logEl = document.getElementById("done-log");
-      logEl.innerHTML = (state.log || []).map(l => "<div>" + esc(l) + "</div>").join("");
+      const videos = data.videos;
+      addLog("Found " + videos.length + " tracks");
+
+      // Deduplicate
+      const seen = new Set();
+      const unique = [];
+      for (const v of videos) {
+        if (!seen.has(v.videoId)) {
+          seen.add(v.videoId);
+          unique.push(v);
+        }
+      }
+      if (unique.length < videos.length) {
+        addLog("Skipping " + (videos.length - unique.length) + " duplicates");
+      }
+
+      // Like each video from the browser (no server quota used!)
+      const total = unique.length;
+      let liked = 0;
+      let failed = 0;
+
+      for (let i = 0; i < unique.length; i++) {
+        const v = unique[i];
+        document.getElementById("phase-text").textContent =
+          "Liking (" + (i + 1) + "/" + total + "): " + v.title;
+        document.getElementById("progress-fill").style.width =
+          Math.round(((i + 1) / total) * 100) + "%";
+        document.getElementById("cnt-progress").textContent = (i + 1) + "/" + total;
+
+        try {
+          const resp = await fetch(
+            "https://www.googleapis.com/youtube/v3/videos/rate?id=" +
+              v.videoId + "&rating=like",
+            {
+              method: "POST",
+              headers: { Authorization: "Bearer " + accessToken },
+            }
+          );
+          if (resp.ok || resp.status === 204) {
+            liked++;
+          } else if (resp.status === 401) {
+            // Token expired — refresh and retry
+            addLog("Token expired, refreshing...");
+            const tokenRes = await fetch("/auth/ytmusic/refresh", { method: "POST" });
+            const tokenData = await tokenRes.json();
+            if (tokenData.access_token) {
+              accessToken = tokenData.access_token;
+              // Retry this one
+              const retry = await fetch(
+                "https://www.googleapis.com/youtube/v3/videos/rate?id=" +
+                  v.videoId + "&rating=like",
+                { method: "POST", headers: { Authorization: "Bearer " + accessToken } }
+              );
+              if (retry.ok || retry.status === 204) { liked++; } else { failed++; }
+            } else {
+              failed++;
+              addLog("Failed to refresh token");
+            }
+          } else {
+            failed++;
+            if (failed <= 5) {
+              const errText = await resp.text();
+              addLog("Failed: " + v.title + " (" + resp.status + ")");
+            }
+          }
+        } catch (e) {
+          failed++;
+          if (failed <= 5) addLog("Failed: " + v.title + " (" + e.message + ")");
+        }
+
+        document.getElementById("cnt-liked").textContent = liked;
+        document.getElementById("cnt-failed").textContent = failed;
+
+        // Small delay to avoid rate limiting
+        await sleep(200);
+      }
+
+      // Done
+      document.getElementById("progress-section").classList.add("hidden");
+      document.getElementById("done-section").classList.remove("hidden");
+      document.getElementById("final-liked").textContent = liked;
+      document.getElementById("final-failed").textContent = failed;
+      addLogTo("done-log", "Done! Liked " + liked + "/" + total + " songs. " + failed + " failed.");
     }
+
+    function addLog(msg) {
+      const el = document.getElementById("log");
+      el.innerHTML += "<div>" + esc(msg) + "</div>";
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function addLogTo(id, msg) {
+      const el = document.getElementById(id);
+      el.innerHTML += "<div>" + esc(msg) + "</div>";
+    }
+
+    function showError(msg) {
+      document.getElementById("progress-section").classList.add("hidden");
+      document.getElementById("done-section").classList.remove("hidden");
+      document.getElementById("done-title").textContent = "Failed";
+      document.getElementById("done-title").style.color = "#ef5350";
+      document.getElementById("done-body").innerHTML = '<span style="color:#ef5350">' + esc(msg) + '</span>';
+    }
+
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
     function esc(s) {
       const d = document.createElement("div");
