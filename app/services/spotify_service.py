@@ -34,35 +34,42 @@ def fetch_liked_songs(sp: spotipy.Spotify) -> list[Track]:
     return tracks
 
 
-def fetch_playlists(sp: spotipy.Spotify) -> list[Playlist]:
+def fetch_playlists(sp: spotipy.Spotify, on_progress=None) -> tuple[list[Playlist], list[str]]:
     playlists = []
     skipped = []
+    # First pass: get all playlist metadata
+    all_items = []
     results = sp.current_user_playlists(limit=50)
     while results:
-        for item in results["items"]:
-            pid = item["id"]
-            name = item["name"]
-            try:
-                tracks = []
-                pitems = sp.playlist_items(pid, limit=100)
-                while pitems:
-                    for pitem in pitems["items"]:
-                        t = _parse_track(pitem)
-                        if t:
-                            tracks.append(t)
-                    if pitems["next"]:
-                        time.sleep(0.1)
-                        pitems = sp.next(pitems)
-                    else:
-                        break
-                playlists.append(Playlist(spotify_id=pid, name=name, tracks=tracks))
-            except Exception:
-                skipped.append(name)
-            time.sleep(0.1)
+        all_items.extend(results["items"])
         if results["next"]:
             results = sp.next(results)
         else:
             break
+
+    total = len(all_items)
+    for i, item in enumerate(all_items):
+        pid = item["id"]
+        name = item["name"]
+        if on_progress:
+            on_progress(f"Fetching playlist {i + 1}/{total}: {name}")
+        try:
+            tracks = []
+            pitems = sp.playlist_items(pid, limit=100)
+            while pitems:
+                for pitem in pitems["items"]:
+                    t = _parse_track(pitem)
+                    if t:
+                        tracks.append(t)
+                if pitems["next"]:
+                    time.sleep(0.1)
+                    pitems = sp.next(pitems)
+                else:
+                    break
+            playlists.append(Playlist(spotify_id=pid, name=name, tracks=tracks))
+        except Exception:
+            skipped.append(name)
+        time.sleep(0.1)
     return playlists, skipped
 
 
