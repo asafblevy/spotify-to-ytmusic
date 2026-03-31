@@ -118,10 +118,10 @@ def run_transfer(session: dict, options: dict) -> None:
 
             time.sleep(0.2)
 
-        # Phase 3: Transfer liked songs (uses YouTube Data API v3)
+        # Phase 3: Transfer liked songs → YouTube Liked Music
         if options.get("liked_songs") and liked:
-            state["phase"] = "Liking songs on YouTube Music..."
-            state["log"].append("Liking songs on YouTube Music...")
+            state["phase"] = "Adding songs to YouTube Liked Music..."
+            state["log"].append("Adding matched songs to your YouTube Liked Music...")
             seen = set()
             liked_ids = []
             for t in liked:
@@ -130,7 +130,7 @@ def run_transfer(session: dict, options: dict) -> None:
                     seen.add(vid)
                     liked_ids.append(vid)
             count = ytmusic_service.like_songs(session, liked_ids)
-            state["log"].append(f"Liked {count} songs")
+            state["log"].append(f"Added {count} songs to Liked Music")
 
         # Phase 4: Transfer playlists
         if options.get("playlists") and playlists:
