@@ -118,10 +118,22 @@ async def transfer_start(request: Request, response: Response):
 
 
 @app.get("/transfer/progress")
-async def transfer_progress(request: Request, response: Response):
-    session = ensure_session(request, response)
+async def transfer_progress(request: Request):
+    # Use get_session directly (read-only, no new cookie needed for SSE)
+    session = get_session(request)
+    if not session:
+        async def error_gen():
+            yield {"event": "progress", "data": json.dumps({"done": True, "error": "No session found. Please refresh and try again."})}
+        return EventSourceResponse(error_gen())
 
     async def event_generator():
+        # Wait briefly for transfer thread to initialize state
+        for _ in range(10):
+            state = session.get("transfer_state")
+            if state and state.get("phase"):
+                break
+            await asyncio.sleep(0.5)
+
         while True:
             state = session.get("transfer_state", {})
             yield {"event": "progress", "data": json.dumps(state)}
@@ -139,6 +151,18 @@ async def logout(request: Request, response: Response):
     session.clear()
     response.delete_cookie("session_id")
     return {"status": "ok"}
+
+
+# --- Debug ---
+@app.get("/debug/session")
+async def debug_session(request: Request, response: Response):
+    session = ensure_session(request, response)
+    return {
+        "has_spotify_token": "spotify_token" in session,
+        "has_ytmusic_token": "ytmusic_token" in session,
+        "transfer_state": session.get("transfer_state"),
+        "session_keys": list(session.keys()),
+    }
 
 
 # --- Static files & index ---

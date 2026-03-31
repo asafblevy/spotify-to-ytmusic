@@ -1,4 +1,4 @@
-import asyncio
+import traceback
 import time
 from app.models import Track, MatchResult
 from app.services import matcher, ytmusic_service
@@ -13,27 +13,36 @@ from app.services.spotify_service import (
 
 def run_transfer(session: dict, options: dict) -> None:
     """Run the full transfer. Updates session['transfer_state'] as it goes."""
-    state = session.setdefault("transfer_state", {})
+    state = session["transfer_state"]
     state.update(
         {
-            "phase": "starting",
+            "phase": "Initializing...",
             "total": 0,
             "processed": 0,
             "matched": 0,
             "failed_tracks": [],
             "done": False,
             "error": None,
-            "log": [],
+            "log": ["Transfer started..."],
         }
     )
 
     try:
+        state["log"].append("Authenticating with Spotify...")
         sp = get_spotify_client(session)
-        yt = get_ytmusic_client(session)
-        if not sp or not yt:
-            state["error"] = "Not authenticated with both services"
+        if not sp:
+            state["error"] = "Spotify authentication failed. Please reconnect."
             state["done"] = True
             return
+
+        state["log"].append("Authenticating with YouTube Music...")
+        yt = get_ytmusic_client(session)
+        if not yt:
+            state["error"] = "YouTube Music authentication failed. Please reconnect."
+            state["done"] = True
+            return
+
+        state["log"].append("Both services connected!")
 
         # Phase 1: Fetch Spotify data
         liked = []
@@ -143,5 +152,7 @@ def run_transfer(session: dict, options: dict) -> None:
         )
 
     except Exception as e:
-        state["error"] = str(e)
+        state["error"] = f"{type(e).__name__}: {e}"
+        state["log"].append(f"ERROR: {type(e).__name__}: {e}")
+        state["log"].append(traceback.format_exc())
         state["done"] = True

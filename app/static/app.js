@@ -114,6 +114,24 @@ function updateProgress(state) {
 function showDone(state) {
   document.getElementById("progress-section").classList.add("hidden");
   document.getElementById("done-section").classList.remove("hidden");
+
+  if (state.error) {
+    document.getElementById("done-section").querySelector("h3").textContent = "Transfer Failed";
+    document.getElementById("done-section").querySelector("h3").style.color = "#ef5350";
+    document.getElementById("final-matched").parentElement.innerHTML =
+      '<span style="color:#ef5350">' + escHtml(state.error) + '</span>';
+    // Show log for debugging
+    const logs = state.log || [];
+    if (logs.length > 0) {
+      const logHtml = logs.map((l) => "<div>" + escHtml(l) + "</div>").join("");
+      const logDiv = document.createElement("div");
+      logDiv.className = "log";
+      logDiv.innerHTML = logHtml;
+      document.getElementById("done-section").querySelector(".card").appendChild(logDiv);
+    }
+    return;
+  }
+
   document.getElementById("final-matched").textContent = state.matched || 0;
   const failed = state.failed_tracks || [];
   document.getElementById("final-failed").textContent = failed.length;
@@ -125,8 +143,14 @@ function showDone(state) {
     listEl.innerHTML = failed.map((f) => "<div>" + escHtml(f) + "</div>").join("");
   }
 
-  if (state.error) {
-    document.getElementById("phase-text").textContent = "Error: " + state.error;
+  // Show log summary
+  const logs = state.log || [];
+  if (logs.length > 0) {
+    const logHtml = logs.map((l) => "<div>" + escHtml(l) + "</div>").join("");
+    const logDiv = document.createElement("div");
+    logDiv.className = "log";
+    logDiv.innerHTML = logHtml;
+    document.getElementById("done-section").querySelector(".card").appendChild(logDiv);
   }
 }
 
