@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: spotify-to-ytmusic
+    runtime: docker
+    plan: free
+    envVars:
+      - key: SPOTIFY_CLIENT_ID
+        sync: false
+      - key: SPOTIFY_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: BASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
