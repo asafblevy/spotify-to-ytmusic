@@ -126,11 +126,13 @@ def run_transfer(session: dict, options: dict) -> None:
         if options.get("liked_songs") and liked:
             state["phase"] = "Liking songs on YouTube Music..."
             state["log"].append("Liking songs on YouTube Music...")
-            liked_ids = [
-                match_cache[t.spotify_id]
-                for t in liked
-                if match_cache.get(t.spotify_id)
-            ]
+            seen = set()
+            liked_ids = []
+            for t in liked:
+                vid = match_cache.get(t.spotify_id)
+                if vid and vid not in seen:
+                    seen.add(vid)
+                    liked_ids.append(vid)
             count = ytmusic_service.like_songs(yt, liked_ids)
             state["log"].append(f"Liked {count} songs")
 
