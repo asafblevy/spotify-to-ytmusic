@@ -1,27 +1,21 @@
 # Spotify to YouTube Music Transfer
 
-A web app to transfer your Spotify library (liked songs, playlists, followed artists) to YouTube Music. Designed to run on your Mac and be accessed from any phone via browser.
+A mobile-friendly web app to transfer your Spotify library (liked songs, playlists, followed artists) to YouTube Music. Hosted on Render — just share the link with friends.
 
-## Setup (One Time)
+## Deployment on Render (Recommended)
 
-### 1. Install dependencies
-
-```bash
-cd ~/spotify-to-ytmusic
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-### 2. Create Spotify API credentials
+### 1. Create Spotify API credentials
 
 1. Go to https://developer.spotify.com/dashboard
 2. Click **Create App**
-3. Set **Redirect URI** to `http://localhost:8000/auth/spotify/callback`
-   - If using ngrok: also add `https://YOUR-NGROK-URL/auth/spotify/callback`
-4. Copy the **Client ID** and **Client Secret**
+3. App name: anything (e.g., "Spotify to YTMusic")
+4. Redirect URI: `https://YOUR-RENDER-URL.onrender.com/auth/spotify/callback`
+   (you'll get this URL after deploying — come back and update it)
+5. Copy the **Client ID** and **Client Secret**
+6. Go to **User Management** and add your friends' Spotify email addresses
+   (required while the app is in Development Mode)
 
-### 3. Create Google OAuth credentials (for YouTube Music)
+### 2. Create Google OAuth credentials (for YouTube Music)
 
 1. Go to https://console.cloud.google.com/
 2. Create a new project (or use existing)
@@ -30,58 +24,54 @@ pip install -r requirements.txt
    - Choose **External**
    - Fill in app name, email
    - Add scopes: `https://www.googleapis.com/auth/youtube`
-   - Under **Test users**, add your Google email + your 2 friends' emails
+   - Under **Test users**, add your Google email + your friends' emails
 5. Go to **APIs & Services > Credentials**
    - Click **Create Credentials > OAuth client ID**
    - Application type: **TVs and Limited Input devices**
    - Copy the **Client ID** and **Client Secret**
 
-### 4. Configure the app
+### 3. Deploy to Render
 
-```bash
-cp .env.example .env
-# Edit .env with your credentials
-```
+1. Go to https://render.com and sign in with GitHub
+2. Click **New > Web Service** and select this repo
+3. It auto-detects the Dockerfile — click **Create Web Service**
+4. Once deployed, copy your URL (e.g., `https://spotify-to-ytmusic-xxxx.onrender.com`)
 
-## Running
+### 4. Set environment variables
 
-### Local (same machine)
+In Render dashboard → your service → **Environment**, add:
+
+| Key | Value |
+|-----|-------|
+| `SPOTIFY_CLIENT_ID` | from step 1 |
+| `SPOTIFY_CLIENT_SECRET` | from step 1 |
+| `GOOGLE_CLIENT_ID` | from step 2 |
+| `GOOGLE_CLIENT_SECRET` | from step 2 |
+| `BASE_URL` | your full Render URL (e.g., `https://spotify-to-ytmusic-xxxx.onrender.com`) |
+| `SECRET_KEY` | any random string |
+
+### 5. Update Spotify redirect URI
+
+Go back to your Spotify app dashboard and set the redirect URI to:
+`https://YOUR-RENDER-URL.onrender.com/auth/spotify/callback`
+
+### 6. Share the link
+
+Send your Render URL to friends. They open it on their phone, connect both accounts, and transfer.
+
+## Running Locally (Optional)
 
 ```bash
 cd ~/spotify-to-ytmusic
+python3 -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+# Edit .env with your credentials (set BASE_URL=http://localhost:8000)
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Open http://localhost:8000 in your browser.
-
-### For mobile / friends (via ngrok)
-
-```bash
-# In a separate terminal:
-ngrok http 8000
-```
-
-1. Copy the ngrok HTTPS URL (e.g., `https://abc123.ngrok-free.app`)
-2. Update `BASE_URL` in `.env` to the ngrok URL
-3. Add the ngrok callback URL to your Spotify app's redirect URIs:
-   `https://abc123.ngrok-free.app/auth/spotify/callback`
-4. Restart the server
-5. Share the ngrok URL with your friends — they open it in Safari/Chrome
-
-### For mobile on same Wi-Fi (no ngrok)
-
-```bash
-# Find your local IP
-ipconfig getifaddr en0
-
-# Update BASE_URL in .env to http://YOUR_IP:8000
-# Restart server, open http://YOUR_IP:8000 on phone
-```
-
-Note: Spotify requires HTTPS for redirect URIs in production. For local network,
-you can add `http://YOUR_IP:8000/auth/spotify/callback` as a redirect URI in
-your Spotify app dashboard (works for development/testing).
+Add `http://localhost:8000/auth/spotify/callback` as a redirect URI in your Spotify app.
 
 ## How It Works
 
