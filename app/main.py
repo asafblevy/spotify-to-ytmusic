@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
 
 from app.config import settings
-from app.session import get_session, ensure_session
+from app.session import get_session, ensure_session, save_yt_token, clear_yt_token
 from app.auth.spotify_auth import get_spotify_oauth, get_spotify_client
 from app.auth.ytmusic_auth import start_device_flow, poll_device_flow, get_ytmusic_client
 from app.services.spotify_service import fetch_liked_songs, fetch_playlists, fetch_followed_artists
@@ -68,6 +68,7 @@ async def ytmusic_poll(request: Request, response: Response):
     token = poll_device_flow(device_code)
     if token:
         session["ytmusic_token"] = token
+        save_yt_token(response, token)
         return {"status": "complete"}
     return {"status": "pending"}
 
@@ -150,6 +151,7 @@ async def logout(request: Request, response: Response):
     session = ensure_session(request, response)
     session.clear()
     response.delete_cookie("session_id")
+    clear_yt_token(response)
     return {"status": "ok"}
 
 
