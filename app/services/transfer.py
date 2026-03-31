@@ -3,7 +3,6 @@ import time
 from app.models import Track, MatchResult
 from app.services import matcher, ytmusic_service
 from app.auth.spotify_auth import get_spotify_client
-from app.auth.ytmusic_auth import get_ytmusic_client
 from app.services.spotify_service import (
     fetch_liked_songs,
     fetch_playlists,
@@ -35,9 +34,8 @@ def run_transfer(session: dict, options: dict) -> None:
             state["done"] = True
             return
 
-        state["log"].append("Authenticating with YouTube Music...")
-        yt = get_ytmusic_client(session)
-        if not yt:
+        state["log"].append("Checking YouTube Music credentials...")
+        if "ytmusic_token" not in session or "access_token" not in session.get("ytmusic_token", {}):
             state["error"] = "YouTube Music authentication failed. Please reconnect."
             state["done"] = True
             return
@@ -58,7 +56,6 @@ def run_transfer(session: dict, options: dict) -> None:
         if options.get("playlists"):
             state["phase"] = "Fetching playlists from Spotify..."
             state["log"].append("Fetching playlists...")
-            # Re-auth in case token expired during fetch
             sp = get_spotify_client(session)
 
             def playlist_progress(msg):
@@ -92,16 +89,15 @@ def run_transfer(session: dict, options: dict) -> None:
         state["total"] = len(all_tracks) + len(artists)
         state["processed"] = 0
 
-        # Phase 2: Match tracks
-        state["phase"] = "Matching songs on YouTube Music..."
-        match_cache: dict[str, str | None] = {}  # spotify_id -> videoId
+        # Phase 2: Match tracks (uses yt-dlp, no auth needed)
+        state["phase"] = "Matching songs on YouTube..."
+        match_cache: dict[str, str | None] = {}
 
         for i, (sid, track) in enumerate(all_tracks.items()):
             state["phase"] = f"Matching ({i+1}/{len(all_tracks)}): {track.artist} - {track.title}"
 
-            # Debug logging for first 5 tracks to diagnose issues
             debug_log = [] if i < 5 else None
-            video_id, score = matcher.find_match(yt, track, debug_log=debug_log)
+            video_id, score = matcher.find_match(None, track, debug_log=debug_log)
             match_cache[sid] = video_id
             state["processed"] += 1
 
@@ -122,7 +118,7 @@ def run_transfer(session: dict, options: dict) -> None:
 
             time.sleep(0.2)
 
-        # Phase 3: Transfer liked songs
+        # Phase 3: Transfer liked songs (uses YouTube Data API v3)
         if options.get("liked_songs") and liked:
             state["phase"] = "Liking songs on YouTube Music..."
             state["log"].append("Liking songs on YouTube Music...")
@@ -133,7 +129,7 @@ def run_transfer(session: dict, options: dict) -> None:
                 if vid and vid not in seen:
                     seen.add(vid)
                     liked_ids.append(vid)
-            count = ytmusic_service.like_songs(yt, liked_ids)
+            count = ytmusic_service.like_songs(session, liked_ids)
             state["log"].append(f"Liked {count} songs")
 
         # Phase 4: Transfer playlists
@@ -146,7 +142,7 @@ def run_transfer(session: dict, options: dict) -> None:
                     for t in pl.tracks
                     if match_cache.get(t.spotify_id)
                 ]
-                pid = ytmusic_service.create_playlist(yt, pl.name, vids)
+                pid = ytmusic_service.create_playlist(session, pl.name, vids)
                 if pid:
                     state["log"].append(
                         f"  Created with {len(vids)}/{len(pl.tracks)} tracks"
@@ -161,7 +157,7 @@ def run_transfer(session: dict, options: dict) -> None:
             sub_count = 0
             for a in artists:
                 state["phase"] = f"Subscribing: {a.name}"
-                if ytmusic_service.subscribe_artist(yt, a.name):
+                if ytmusic_service.subscribe_artist(session, a.name):
                     sub_count += 1
                 state["processed"] += 1
                 time.sleep(0.3)
