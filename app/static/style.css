@@ -1,0 +1,186 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #0a0a0a;
+  color: #e0e0e0;
+  min-height: 100vh;
+  padding: 16px;
+  max-width: 480px;
+  margin: 0 auto;
+}
+h1 {
+  font-size: 1.4rem;
+  text-align: center;
+  padding: 16px 0;
+  background: linear-gradient(135deg, #1db954, #ff0000);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.subtitle {
+  text-align: center;
+  color: #888;
+  font-size: 0.85rem;
+  margin-bottom: 24px;
+}
+.section { margin-bottom: 20px; }
+.card {
+  background: #1a1a1a;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 12px;
+  border: 1px solid #2a2a2a;
+}
+.card h3 {
+  font-size: 1rem;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.spotify-color { color: #1db954; }
+.yt-color { color: #ff0000; }
+.btn {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+.btn:active { opacity: 0.7; }
+.btn-spotify { background: #1db954; color: #fff; }
+.btn-yt { background: #ff0000; color: #fff; }
+.btn-transfer {
+  background: linear-gradient(135deg, #1db954, #ff0000);
+  color: #fff;
+  margin-top: 16px;
+}
+.btn-logout { background: #333; color: #aaa; margin-top: 8px; font-size: 0.85rem; padding: 10px; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.connected {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: #1a2e1a;
+  border-radius: 10px;
+  color: #4caf50;
+  font-weight: 500;
+}
+.connected.yt-connected { background: #2e1a1a; color: #ef5350; }
+.device-code {
+  text-align: center;
+  padding: 16px;
+}
+.device-code .code {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: #fff;
+  margin: 12px 0;
+}
+.device-code a {
+  color: #64b5f6;
+  font-size: 0.95rem;
+}
+.device-code .hint {
+  color: #888;
+  font-size: 0.8rem;
+  margin-top: 8px;
+}
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #555;
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.preview-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.stat {
+  text-align: center;
+  padding: 12px 4px;
+  background: #222;
+  border-radius: 8px;
+}
+.stat .num { font-size: 1.5rem; font-weight: 700; color: #fff; }
+.stat .label { font-size: 0.75rem; color: #888; margin-top: 4px; }
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  font-size: 0.95rem;
+}
+.checkbox-row input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  accent-color: #1db954;
+}
+.progress-bar {
+  height: 6px;
+  background: #333;
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+.progress-bar .fill {
+  height: 100%;
+  background: linear-gradient(90deg, #1db954, #ff0000);
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+.phase-text {
+  font-size: 0.85rem;
+  color: #aaa;
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.counters {
+  display: flex;
+  gap: 16px;
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+}
+.counters span { color: #888; }
+.counters .matched { color: #4caf50; }
+.counters .failed { color: #ef5350; }
+.log {
+  max-height: 200px;
+  overflow-y: auto;
+  background: #111;
+  border-radius: 8px;
+  padding: 12px;
+  font-family: "SF Mono", monospace;
+  font-size: 0.75rem;
+  color: #888;
+  margin-top: 12px;
+}
+.log div { padding: 2px 0; }
+.failed-list {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-top: 12px;
+}
+.failed-list div {
+  padding: 6px 0;
+  border-bottom: 1px solid #222;
+  font-size: 0.85rem;
+  color: #ef5350;
+}
+.hidden { display: none; }

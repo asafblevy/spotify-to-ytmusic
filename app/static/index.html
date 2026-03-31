@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Spotify to YouTube Music</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <h1>Spotify &rarr; YouTube Music</h1>
+  <p class="subtitle">Transfer your entire library in minutes</p>
+
+  <!-- Auth Section -->
+  <div id="auth-section" class="section">
+    <div class="card">
+      <h3><span class="spotify-color">&#9679;</span> Spotify</h3>
+      <div id="spotify-disconnected">
+        <a href="/auth/spotify/login" class="btn btn-spotify">Connect Spotify</a>
+      </div>
+      <div id="spotify-connected" class="connected hidden">
+        &#10003; Connected to Spotify
+      </div>
+    </div>
+
+    <div class="card">
+      <h3><span class="yt-color">&#9679;</span> YouTube Music</h3>
+      <div id="yt-disconnected">
+        <button class="btn btn-yt" onclick="startYTAuth()">Connect YouTube Music</button>
+      </div>
+      <div id="yt-device-code" class="device-code hidden">
+        <p>Go to this link and enter the code:</p>
+        <a id="yt-link" href="#" target="_blank"></a>
+        <div class="code" id="yt-code"></div>
+        <div class="hint"><span class="spinner"></span> Waiting for authorization...</div>
+      </div>
+      <div id="yt-connected" class="connected yt-connected hidden">
+        &#10003; Connected to YouTube Music
+      </div>
+    </div>
+  </div>
+
+  <!-- Preview Section -->
+  <div id="preview-section" class="section hidden">
+    <div class="card">
+      <h3>Your Spotify Library</h3>
+      <div class="preview-stats">
+        <div class="stat">
+          <div class="num" id="stat-liked">-</div>
+          <div class="label">Liked Songs</div>
+        </div>
+        <div class="stat">
+          <div class="num" id="stat-playlists">-</div>
+          <div class="label">Playlists</div>
+        </div>
+        <div class="stat">
+          <div class="num" id="stat-artists">-</div>
+          <div class="label">Artists</div>
+        </div>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="opt-liked" checked>
+        <label for="opt-liked">Transfer liked songs</label>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="opt-playlists" checked>
+        <label for="opt-playlists">Transfer playlists</label>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="opt-artists" checked>
+        <label for="opt-artists">Subscribe to artists</label>
+      </div>
+      <button class="btn btn-transfer" onclick="startTransfer()">Start Transfer</button>
+    </div>
+  </div>
+
+  <!-- Progress Section -->
+  <div id="progress-section" class="section hidden">
+    <div class="card">
+      <h3>Transfer in Progress</h3>
+      <div class="phase-text" id="phase-text">Starting...</div>
+      <div class="progress-bar"><div class="fill" id="progress-fill" style="width:0%"></div></div>
+      <div class="counters">
+        <span>Processed: <strong id="cnt-processed">0</strong></span>
+        <span class="matched">Matched: <strong id="cnt-matched">0</strong></span>
+        <span class="failed">Failed: <strong id="cnt-failed">0</strong></span>
+      </div>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+
+  <!-- Done Section -->
+  <div id="done-section" class="section hidden">
+    <div class="card">
+      <h3>Transfer Complete</h3>
+      <div class="counters" style="margin-bottom:12px">
+        <span class="matched">Matched: <strong id="final-matched">0</strong></span>
+        <span class="failed">Not found: <strong id="final-failed">0</strong></span>
+      </div>
+      <div id="failed-list-container" class="hidden">
+        <h3 style="font-size:0.9rem;color:#ef5350;cursor:pointer" onclick="toggleFailed()">
+          &#9660; Songs not found (<span id="failed-count">0</span>)
+        </h3>
+        <div class="failed-list" id="failed-list"></div>
+      </div>
+    </div>
+    <button class="btn btn-logout" onclick="logout()">Disconnect &amp; Start Over</button>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
