@@ -96,17 +96,30 @@ def run_transfer(session: dict, options: dict) -> None:
         state["phase"] = "Matching songs on YouTube Music..."
         match_cache: dict[str, str | None] = {}  # spotify_id -> videoId
 
-        for sid, track in all_tracks.items():
-            state["phase"] = f"Matching: {track.artist} - {track.title}"
-            video_id, score = matcher.find_match(yt, track)
+        for i, (sid, track) in enumerate(all_tracks.items()):
+            state["phase"] = f"Matching ({i+1}/{len(all_tracks)}): {track.artist} - {track.title}"
+
+            # Debug logging for first 5 tracks to diagnose issues
+            debug_log = [] if i < 5 else None
+            video_id, score = matcher.find_match(yt, track, debug_log=debug_log)
             match_cache[sid] = video_id
             state["processed"] += 1
+
             if video_id:
                 state["matched"] += 1
             else:
                 state["failed_tracks"].append(
                     f"{track.artist} - {track.title} (score: {score:.0f})"
                 )
+
+            if debug_log:
+                for line in debug_log:
+                    state["log"].append(line)
+                state["log"].append(
+                    f"  => {track.artist} - {track.title}: "
+                    f"{'MATCHED' if video_id else 'FAILED'} (score={score:.0f})"
+                )
+
             time.sleep(0.4)
 
         # Phase 3: Transfer liked songs
