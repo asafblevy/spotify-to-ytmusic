@@ -60,11 +60,15 @@ def run_transfer(session: dict, options: dict) -> None:
             state["log"].append("Fetching playlists...")
             # Re-auth in case token expired during fetch
             sp = get_spotify_client(session)
-            playlists = fetch_playlists(sp)
+            playlists, skipped = fetch_playlists(sp)
             state["log"].append(
                 f"Found {len(playlists)} playlists "
                 f"({sum(len(p.tracks) for p in playlists)} total tracks)"
             )
+            if skipped:
+                state["log"].append(
+                    f"Skipped {len(skipped)} inaccessible playlists: {', '.join(skipped)}"
+                )
 
         if options.get("artists"):
             state["phase"] = "Fetching followed artists from Spotify..."

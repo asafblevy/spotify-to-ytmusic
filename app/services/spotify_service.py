@@ -36,31 +36,34 @@ def fetch_liked_songs(sp: spotipy.Spotify) -> list[Track]:
 
 def fetch_playlists(sp: spotipy.Spotify) -> list[Playlist]:
     playlists = []
+    skipped = []
     results = sp.current_user_playlists(limit=50)
     while results:
         for item in results["items"]:
             pid = item["id"]
             name = item["name"]
-            # Fetch tracks for this playlist
-            tracks = []
-            pitems = sp.playlist_items(pid, limit=100)
-            while pitems:
-                for pitem in pitems["items"]:
-                    t = _parse_track(pitem)
-                    if t:
-                        tracks.append(t)
-                if pitems["next"]:
-                    time.sleep(0.1)
-                    pitems = sp.next(pitems)
-                else:
-                    break
-            playlists.append(Playlist(spotify_id=pid, name=name, tracks=tracks))
+            try:
+                tracks = []
+                pitems = sp.playlist_items(pid, limit=100)
+                while pitems:
+                    for pitem in pitems["items"]:
+                        t = _parse_track(pitem)
+                        if t:
+                            tracks.append(t)
+                    if pitems["next"]:
+                        time.sleep(0.1)
+                        pitems = sp.next(pitems)
+                    else:
+                        break
+                playlists.append(Playlist(spotify_id=pid, name=name, tracks=tracks))
+            except Exception:
+                skipped.append(name)
             time.sleep(0.1)
         if results["next"]:
             results = sp.next(results)
         else:
             break
-    return playlists
+    return playlists, skipped
 
 
 def fetch_followed_artists(sp: spotipy.Spotify) -> list[Artist]:
