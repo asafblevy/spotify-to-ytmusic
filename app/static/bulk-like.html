@@ -7,58 +7,66 @@
   <title>Bulk Like Songs</title>
   <link rel="stylesheet" href="/static/style.css">
   <style>
+    .tabs { display: flex; gap: 0; margin-bottom: 16px; }
+    .tab {
+      flex: 1; padding: 12px; text-align: center; cursor: pointer;
+      background: #1a1a1a; color: #888; font-weight: 600; font-size: 0.9rem;
+      border: 1px solid #2a2a2a; transition: all 0.2s;
+    }
+    .tab:first-child { border-radius: 10px 0 0 10px; }
+    .tab:last-child { border-radius: 0 10px 10px 0; }
+    .tab.active { background: #333; color: #fff; border-color: #555; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
     .step { margin-bottom: 20px; }
     .step-num {
-      display: inline-block;
-      width: 28px; height: 28px;
+      display: inline-block; width: 28px; height: 28px;
       background: #333; border-radius: 50%;
       text-align: center; line-height: 28px;
-      font-weight: 700; font-size: 0.85rem;
-      margin-right: 8px; color: #fff;
+      font-weight: 700; font-size: 0.85rem; margin-right: 8px; color: #fff;
     }
     .step h3 { display: flex; align-items: center; margin-bottom: 8px; }
     .step p { color: #aaa; font-size: 0.9rem; margin-bottom: 8px; }
     pre {
       background: #111; border-radius: 8px; padding: 14px;
       font-size: 0.75rem; overflow-x: auto; color: #4caf50;
-      line-height: 1.4; position: relative;
-      white-space: pre-wrap; word-break: break-all;
+      line-height: 1.4; white-space: pre-wrap; word-break: break-all;
     }
+    .pre-wrap { position: relative; }
     .copy-btn {
       position: absolute; top: 8px; right: 8px;
       background: #333; border: none; color: #fff;
-      padding: 4px 10px; border-radius: 6px; font-size: 0.75rem;
-      cursor: pointer;
+      padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; cursor: pointer;
     }
     .copy-btn:active { background: #4caf50; }
-    .pre-wrap { position: relative; }
+    .warning { background: #2a2200; border: 1px solid #554400; border-radius: 8px; padding: 12px; margin-bottom: 16px; font-size: 0.85rem; color: #ffab00; }
   </style>
 </head>
 <body>
   <h1>Bulk Like Songs</h1>
   <p class="subtitle">Like every song in a YouTube Music playlist</p>
 
-  <div class="card">
-    <div class="step">
-      <h3><span class="step-num">1</span> Open your playlist</h3>
-      <p>Go to <a href="https://music.youtube.com/library/playlists" target="_blank" style="color:#64b5f6">YouTube Music</a> and open the playlist you want to like all songs from.</p>
-    </div>
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('desktop')">Desktop</div>
+    <div class="tab" onclick="switchTab('mobile')">Mobile</div>
+  </div>
 
-    <div class="step">
-      <h3><span class="step-num">2</span> Open browser console</h3>
-      <p>
-        <strong>Desktop:</strong> Press F12 (or Cmd+Option+J on Mac), then click the Console tab.<br>
-        <strong>Mobile:</strong> This only works on desktop browsers.
-      </p>
-    </div>
-
-    <div class="step">
-      <h3><span class="step-num">3</span> Paste and run this script</h3>
-      <p>It will scroll to load all songs, then like each one with a short delay.</p>
-      <div class="pre-wrap">
-        <button class="copy-btn" onclick="copyScript('like-script')">Copy</button>
-        <pre id="like-script">async function likeAll() {
-  // Step 1: Scroll to load all songs
+  <!-- ===== DESKTOP TAB (Console Script) ===== -->
+  <div id="tab-desktop" class="tab-content active">
+    <div class="card">
+      <div class="step">
+        <h3><span class="step-num">1</span> Open your playlist</h3>
+        <p>Go to <a href="https://music.youtube.com/library/playlists" target="_blank" style="color:#64b5f6">YouTube Music</a> and open the playlist.</p>
+      </div>
+      <div class="step">
+        <h3><span class="step-num">2</span> Open browser console</h3>
+        <p>Press F12 (or Cmd+Option+J on Mac), click the Console tab.</p>
+      </div>
+      <div class="step">
+        <h3><span class="step-num">3</span> Paste and run this script</h3>
+        <div class="pre-wrap">
+          <button class="copy-btn" onclick="copyScript('like-script')">Copy</button>
+          <pre id="like-script">async function likeAll() {
   console.log('Scrolling to load all songs...');
   let last = 0;
   while (true) {
@@ -71,14 +79,10 @@
     if (current === last) break;
     last = current;
   }
-
-  // Step 2: Find all unliked songs
   const buttons = document.querySelectorAll(
     'yt-button-shape#button-shape-like button[aria-pressed="false"]'
   );
   console.log('Found ' + buttons.length + ' unliked songs');
-
-  // Step 3: Like each one
   for (let i = 0; i &lt; buttons.length; i++) {
     buttons[i].click();
     console.log('Liked ' + (i + 1) + '/' + buttons.length);
@@ -87,27 +91,228 @@
   console.log('Done! Liked ' + buttons.length + ' songs');
 }
 likeAll();</pre>
+        </div>
+      </div>
+      <div class="step">
+        <h3><span class="step-num">4</span> Wait</h3>
+        <p>~12 minutes per 1400 songs. Keep the tab open.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MOBILE TAB (Server-Side) ===== -->
+  <div id="tab-mobile" class="tab-content">
+    <div class="warning">
+      YouTube API has a daily quota limit (~200 likes/day). If you have many songs, it will pause and you'll need to come back the next day to resume.
+    </div>
+
+    <!-- Auth -->
+    <div id="auth-section" class="section">
+      <div class="card">
+        <h3><span class="yt-color">&#9679;</span> YouTube Music</h3>
+        <div id="yt-disconnected">
+          <button class="btn btn-yt" onclick="startYTAuth()">Connect YouTube Music</button>
+        </div>
+        <div id="yt-device-code" class="device-code hidden">
+          <p>Go to this link and enter the code:</p>
+          <a id="yt-link" href="#" target="_blank"></a>
+          <div class="code" id="yt-code"></div>
+          <div class="hint"><span class="spinner"></span> Waiting for authorization...</div>
+        </div>
+        <div id="yt-connected" class="connected yt-connected hidden">
+          &#10003; Connected to YouTube Music
+        </div>
       </div>
     </div>
 
-    <div class="step">
-      <h3><span class="step-num">4</span> Wait</h3>
-      <p>Keep the tab open. It takes ~12 minutes per 1400 songs. Progress is logged in the console.</p>
+    <!-- Playlist Select -->
+    <div id="select-section" class="section hidden">
+      <div class="card">
+        <h3>Select a Playlist</h3>
+        <div id="playlist-list"></div>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div id="progress-section" class="section hidden">
+      <div class="card">
+        <h3>Liking Songs...</h3>
+        <div class="phase-text" id="phase-text">Starting...</div>
+        <div class="progress-bar"><div class="fill" id="progress-fill" style="width:0%"></div></div>
+        <div class="counters">
+          <span>Progress: <strong id="cnt-progress">0/0</strong></span>
+          <span class="matched">Liked: <strong id="cnt-liked">0</strong></span>
+          <span class="failed">Failed: <strong id="cnt-failed">0</strong></span>
+        </div>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
+
+    <!-- Done -->
+    <div id="done-section" class="section hidden">
+      <div class="card">
+        <h3 id="done-title">Complete</h3>
+        <div id="done-body" class="counters" style="margin-bottom:12px">
+          <span class="matched">Liked: <strong id="final-liked">0</strong></span>
+          <span class="failed">Failed: <strong id="final-failed">0</strong></span>
+        </div>
+        <div id="resume-container" class="hidden">
+          <button class="btn btn-transfer" onclick="resumeLike()">
+            Resume (quota resets at midnight PT)
+          </button>
+        </div>
+        <div class="log" id="done-log"></div>
+      </div>
     </div>
   </div>
 
   <a href="/" class="btn btn-logout" style="display:block;text-align:center;text-decoration:none;margin-top:16px">Back to Transfer</a>
 
   <script>
+    let ytPollTimer = null;
+    let lastPlaylistId = null;
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      document.getElementById('tab-' + tab).classList.add('active');
+      document.querySelector(`.tab:nth-child(${tab === 'desktop' ? 1 : 2})`).classList.add('active');
+      if (tab === 'mobile') init();
+    }
+
+    async function init() {
+      const res = await fetch("/auth/status");
+      const data = await res.json();
+      if (data.ytmusic) {
+        document.getElementById("yt-disconnected").classList.add("hidden");
+        document.getElementById("yt-connected").classList.remove("hidden");
+        loadPlaylists();
+      }
+    }
+
+    async function startYTAuth() {
+      const res = await fetch("/auth/ytmusic/start", { method: "POST" });
+      const data = await res.json();
+      document.getElementById("yt-disconnected").classList.add("hidden");
+      document.getElementById("yt-device-code").classList.remove("hidden");
+      document.getElementById("yt-code").textContent = data.user_code;
+      const link = document.getElementById("yt-link");
+      link.href = data.verification_url;
+      link.textContent = data.verification_url;
+      ytPollTimer = setInterval(pollYTAuth, 5000);
+    }
+
+    async function pollYTAuth() {
+      const res = await fetch("/auth/ytmusic/poll");
+      const data = await res.json();
+      if (data.status === "complete") {
+        clearInterval(ytPollTimer);
+        document.getElementById("yt-device-code").classList.add("hidden");
+        document.getElementById("yt-connected").classList.remove("hidden");
+        loadPlaylists();
+      }
+    }
+
+    async function loadPlaylists() {
+      document.getElementById("select-section").classList.remove("hidden");
+      const listEl = document.getElementById("playlist-list");
+      listEl.innerHTML = '<div style="color:#888;padding:12px"><span class="spinner"></span> Loading...</div>';
+      const res = await fetch("/bulk-like/playlists");
+      const data = await res.json();
+      if (data.error) {
+        listEl.innerHTML = '<div style="color:#ef5350">' + esc(data.error) + '</div>';
+        return;
+      }
+      listEl.innerHTML = data.playlists.map(pl =>
+        '<button class="btn" style="background:#222;color:#fff;margin-bottom:8px;text-align:left;display:flex;justify-content:space-between" onclick="startBulkLike(\'' + pl.id + '\')">' +
+          '<span>' + esc(pl.title) + '</span>' +
+          '<span style="color:#888;font-size:0.85rem">' + pl.count + ' songs</span>' +
+        '</button>'
+      ).join("");
+    }
+
+    async function startBulkLike(playlistId) {
+      lastPlaylistId = playlistId;
+      document.getElementById("select-section").classList.add("hidden");
+      document.getElementById("auth-section").classList.add("hidden");
+      document.getElementById("done-section").classList.add("hidden");
+      document.getElementById("progress-section").classList.remove("hidden");
+      await fetch("/bulk-like/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playlist_id: playlistId }),
+      });
+      listenProgress();
+    }
+
+    function listenProgress() {
+      const evtSource = new EventSource("/bulk-like/progress");
+      evtSource.addEventListener("progress", (e) => {
+        const state = JSON.parse(e.data);
+        updateProgress(state);
+        if (state.done) { evtSource.close(); showDone(state); }
+      });
+      evtSource.onerror = () => evtSource.close();
+    }
+
+    async function resumeLike() {
+      if (!lastPlaylistId) return;
+      document.getElementById("done-section").classList.add("hidden");
+      document.getElementById("progress-section").classList.remove("hidden");
+      await fetch("/bulk-like/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playlist_id: lastPlaylistId }),
+      });
+      listenProgress();
+    }
+
+    function updateProgress(state) {
+      document.getElementById("phase-text").textContent = state.phase || "Working...";
+      const total = state.total || 1;
+      document.getElementById("progress-fill").style.width = Math.round((state.processed / total) * 100) + "%";
+      document.getElementById("cnt-progress").textContent = (state.processed || 0) + "/" + (state.total || 0);
+      document.getElementById("cnt-liked").textContent = state.liked || 0;
+      document.getElementById("cnt-failed").textContent = state.failed || 0;
+      const logEl = document.getElementById("log");
+      logEl.innerHTML = (state.log || []).map(l => "<div>" + esc(l) + "</div>").join("");
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function showDone(state) {
+      document.getElementById("progress-section").classList.add("hidden");
+      document.getElementById("done-section").classList.remove("hidden");
+      if (state.error) {
+        document.getElementById("done-title").textContent = "Failed";
+        document.getElementById("done-title").style.color = "#ef5350";
+        document.getElementById("done-body").innerHTML = '<span style="color:#ef5350">' + esc(state.error) + '</span>';
+      } else if (state.quota_hit) {
+        document.getElementById("done-title").textContent = "Paused — Quota Reached";
+        document.getElementById("done-title").style.color = "#ff9800";
+        const totalLiked = (state.already_liked_ids || []).length;
+        document.getElementById("done-body").innerHTML = '<span class="matched">Liked so far: <strong>' + totalLiked + '</strong></span>';
+        document.getElementById("resume-container").classList.remove("hidden");
+      } else {
+        document.getElementById("done-title").textContent = "Complete";
+        document.getElementById("done-title").style.color = "";
+        document.getElementById("final-liked").textContent = state.liked || 0;
+        document.getElementById("final-failed").textContent = state.failed || 0;
+        document.getElementById("resume-container").classList.add("hidden");
+      }
+      const logEl = document.getElementById("done-log");
+      logEl.innerHTML = (state.log || []).map(l => "<div>" + esc(l) + "</div>").join("");
+    }
+
     function copyScript(id) {
-      const el = document.getElementById(id);
-      const text = el.textContent;
+      const text = document.getElementById(id).textContent;
       navigator.clipboard.writeText(text).then(() => {
-        const btn = el.parentElement.querySelector('.copy-btn');
+        const btn = document.getElementById(id).parentElement.querySelector('.copy-btn');
         btn.textContent = 'Copied!';
         setTimeout(() => btn.textContent = 'Copy', 2000);
       });
     }
+
+    function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
   </script>
 </body>
 </html>
