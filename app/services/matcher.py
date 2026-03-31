@@ -2,6 +2,7 @@ import re
 from thefuzz import fuzz
 from ytmusicapi import YTMusic
 from app.models import Track
+from app.auth.ytmusic_auth import get_search_client
 
 
 def _normalize(s: str) -> str:
@@ -50,8 +51,11 @@ def _score_result(result: dict, track: Track) -> float:
 
 def find_match(yt: YTMusic, track: Track, debug_log=None) -> tuple[str | None, float]:
     """Find the best YTMusic match for a Spotify track.
+    Uses unauthenticated client for search (OAuth client gets 400 errors).
     Returns (videoId, score) or (None, 0).
     debug_log: optional list to append debug info to."""
+
+    search_client = get_search_client()
 
     strategies = [
         (f"{track.artist} {track.title}", "songs"),
@@ -68,7 +72,7 @@ def find_match(yt: YTMusic, track: Track, debug_log=None) -> tuple[str | None, f
             kwargs = {"query": query, "limit": 10}
             if filt:
                 kwargs["filter"] = filt
-            results = yt.search(**kwargs)
+            results = search_client.search(**kwargs)
 
             if not results:
                 if debug_log is not None:
