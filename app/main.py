@@ -14,6 +14,7 @@ from app.auth.ytmusic_auth import start_device_flow, poll_device_flow, get_ytmus
 from app.services.spotify_service import fetch_liked_songs, fetch_playlists, fetch_followed_artists
 from app.services.transfer import run_transfer
 from app.services.dedup import run_dedup
+from app.services.bulk_like import get_playlists as get_yt_playlists, run_bulk_like
 
 app = FastAPI(title="Spotify to YouTube Music Transfer")
 
@@ -178,6 +179,60 @@ async def dedup_progress(request: Request):
             await asyncio.sleep(0.5)
         while True:
             state = session.get("dedup_state", {})
+            yield {"event": "progress", "data": json.dumps(state)}
+            if state.get("done"):
+                break
+            await asyncio.sleep(1)
+
+    return EventSourceResponse(event_generator())
+
+
+# --- Bulk Like ---
+@app.get("/bulk-like", response_class=HTMLResponse)
+async def bulk_like_page():
+    with open("app/static/bulk-like.html") as f:
+        return f.read()
+
+
+@app.get("/bulk-like/playlists")
+async def bulk_like_playlists(request: Request, response: Response):
+    session = ensure_session(request, response)
+    try:
+        playlists = get_yt_playlists(session)
+        return {"playlists": playlists}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+@app.post("/bulk-like/start")
+async def bulk_like_start(request: Request, response: Response):
+    session = ensure_session(request, response)
+    body = await request.json()
+    playlist_id = body.get("playlist_id")
+    if not playlist_id:
+        return JSONResponse({"error": "No playlist_id"}, status_code=400)
+    session["bulk_like_state"] = {}
+    thread = threading.Thread(target=run_bulk_like, args=(session, playlist_id), daemon=True)
+    thread.start()
+    return {"status": "started"}
+
+
+@app.get("/bulk-like/progress")
+async def bulk_like_progress(request: Request):
+    session = get_session(request)
+    if not session:
+        async def error_gen():
+            yield {"event": "progress", "data": json.dumps({"done": True, "error": "No session found."})}
+        return EventSourceResponse(error_gen())
+
+    async def event_generator():
+        for _ in range(10):
+            state = session.get("bulk_like_state")
+            if state and state.get("phase"):
+                break
+            await asyncio.sleep(0.5)
+        while True:
+            state = session.get("bulk_like_state", {})
             yield {"event": "progress", "data": json.dumps(state)}
             if state.get("done"):
                 break

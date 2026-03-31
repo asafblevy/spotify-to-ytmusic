@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Bulk Like Songs</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <h1>Bulk Like Songs</h1>
+  <p class="subtitle">Like every song in a playlist at once</p>
+
+  <!-- Auth Section -->
+  <div id="auth-section" class="section">
+    <div class="card">
+      <h3><span class="yt-color">&#9679;</span> YouTube Music</h3>
+      <div id="yt-disconnected">
+        <button class="btn btn-yt" onclick="startYTAuth()">Connect YouTube Music</button>
+      </div>
+      <div id="yt-device-code" class="device-code hidden">
+        <p>Go to this link and enter the code:</p>
+        <a id="yt-link" href="#" target="_blank"></a>
+        <div class="code" id="yt-code"></div>
+        <div class="hint"><span class="spinner"></span> Waiting for authorization...</div>
+      </div>
+      <div id="yt-connected" class="connected yt-connected hidden">
+        &#10003; Connected to YouTube Music
+      </div>
+    </div>
+  </div>
+
+  <!-- Playlist Select -->
+  <div id="select-section" class="section hidden">
+    <div class="card">
+      <h3>Select a Playlist</h3>
+      <p style="color:#aaa;font-size:0.85rem;margin-bottom:12px">
+        Every song in the selected playlist will be added to your Liked Music.
+      </p>
+      <div id="playlist-list"></div>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div id="progress-section" class="section hidden">
+    <div class="card">
+      <h3>Liking Songs...</h3>
+      <div class="phase-text" id="phase-text">Starting...</div>
+      <div class="progress-bar"><div class="fill" id="progress-fill" style="width:0%"></div></div>
+      <div class="counters">
+        <span>Progress: <strong id="cnt-progress">0/0</strong></span>
+        <span class="matched">Liked: <strong id="cnt-liked">0</strong></span>
+        <span class="failed">Failed: <strong id="cnt-failed">0</strong></span>
+      </div>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+
+  <!-- Done -->
+  <div id="done-section" class="section hidden">
+    <div class="card">
+      <h3 id="done-title">Complete</h3>
+      <div id="done-body" class="counters" style="margin-bottom:12px">
+        <span class="matched">Liked: <strong id="final-liked">0</strong></span>
+        <span class="failed">Failed: <strong id="final-failed">0</strong></span>
+      </div>
+      <div class="log" id="done-log"></div>
+    </div>
+    <a href="/" class="btn btn-logout" style="display:block;text-align:center;text-decoration:none;margin-top:12px">Back to Transfer</a>
+  </div>
+
+  <script>
+    let ytPollTimer = null;
+
+    async function init() {
+      const res = await fetch("/auth/status");
+      const data = await res.json();
+      if (data.ytmusic) {
+        document.getElementById("yt-disconnected").classList.add("hidden");
+        document.getElementById("yt-connected").classList.remove("hidden");
+        loadPlaylists();
+      }
+    }
+
+    async function startYTAuth() {
+      const res = await fetch("/auth/ytmusic/start", { method: "POST" });
+      const data = await res.json();
+      document.getElementById("yt-disconnected").classList.add("hidden");
+      document.getElementById("yt-device-code").classList.remove("hidden");
+      document.getElementById("yt-code").textContent = data.user_code;
+      const link = document.getElementById("yt-link");
+      link.href = data.verification_url;
+      link.textContent = data.verification_url;
+      ytPollTimer = setInterval(pollYTAuth, 5000);
+    }
+
+    async function pollYTAuth() {
+      const res = await fetch("/auth/ytmusic/poll");
+      const data = await res.json();
+      if (data.status === "complete") {
+        clearInterval(ytPollTimer);
+        document.getElementById("yt-device-code").classList.add("hidden");
+        document.getElementById("yt-connected").classList.remove("hidden");
+        loadPlaylists();
+      }
+    }
+
+    async function loadPlaylists() {
+      document.getElementById("select-section").classList.remove("hidden");
+      const listEl = document.getElementById("playlist-list");
+      listEl.innerHTML = '<div style="color:#888;padding:12px"><span class="spinner"></span> Loading playlists...</div>';
+
+      const res = await fetch("/bulk-like/playlists");
+      const data = await res.json();
+
+      if (data.error) {
+        listEl.innerHTML = '<div style="color:#ef5350">' + esc(data.error) + '</div>';
+        return;
+      }
+
+      listEl.innerHTML = data.playlists.map(pl =>
+        '<button class="btn" style="background:#222;color:#fff;margin-bottom:8px;text-align:left;display:flex;justify-content:space-between" onclick="startBulkLike(\'' + pl.id + '\')">' +
+          '<span>' + esc(pl.title) + '</span>' +
+          '<span style="color:#888;font-size:0.85rem">' + pl.count + ' songs</span>' +
+        '</button>'
+      ).join("");
+    }
+
+    async function startBulkLike(playlistId) {
+      document.getElementById("select-section").classList.add("hidden");
+      document.getElementById("auth-section").classList.add("hidden");
+      document.getElementById("progress-section").classList.remove("hidden");
+
+      await fetch("/bulk-like/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playlist_id: playlistId }),
+      });
+
+      const evtSource = new EventSource("/bulk-like/progress");
+      evtSource.addEventListener("progress", (e) => {
+        const state = JSON.parse(e.data);
+        updateProgress(state);
+        if (state.done) {
+          evtSource.close();
+          showDone(state);
+        }
+      });
+      evtSource.onerror = () => evtSource.close();
+    }
+
+    function updateProgress(state) {
+      document.getElementById("phase-text").textContent = state.phase || "Working...";
+      const total = state.total || 1;
+      const pct = Math.round((state.processed / total) * 100);
+      document.getElementById("progress-fill").style.width = pct + "%";
+      document.getElementById("cnt-progress").textContent = state.processed + "/" + state.total;
+      document.getElementById("cnt-liked").textContent = state.liked || 0;
+      document.getElementById("cnt-failed").textContent = state.failed || 0;
+
+      const logEl = document.getElementById("log");
+      const logs = state.log || [];
+      logEl.innerHTML = logs.map(l => "<div>" + esc(l) + "</div>").join("");
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function showDone(state) {
+      document.getElementById("progress-section").classList.add("hidden");
+      document.getElementById("done-section").classList.remove("hidden");
+
+      if (state.error) {
+        document.getElementById("done-title").textContent = "Failed";
+        document.getElementById("done-title").style.color = "#ef5350";
+        document.getElementById("done-body").innerHTML = '<span style="color:#ef5350">' + esc(state.error) + '</span>';
+      } else {
+        document.getElementById("final-liked").textContent = state.liked || 0;
+        document.getElementById("final-failed").textContent = state.failed || 0;
+      }
+
+      const logEl = document.getElementById("done-log");
+      logEl.innerHTML = (state.log || []).map(l => "<div>" + esc(l) + "</div>").join("");
+    }
+
+    function esc(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    init();
+  </script>
+</body>
+</html>
