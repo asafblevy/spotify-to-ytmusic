@@ -55,20 +55,26 @@ def fetch_playlists(sp: spotipy.Spotify, on_progress=None) -> tuple[list[Playlis
             on_progress(f"Fetching playlist {i + 1}/{total}: {name}")
         try:
             tracks = []
-            pitems = sp.playlist_items(pid, limit=100)
+            pitems = sp.playlist_items(
+                pid, limit=100, additional_types=("track",),
+                fields="items(track(id,name,artists(name),album(name),duration_ms)),next"
+            )
             while pitems:
-                for pitem in pitems["items"]:
+                for pitem in pitems.get("items", []):
                     t = _parse_track(pitem)
                     if t:
                         tracks.append(t)
-                if pitems["next"]:
+                if pitems.get("next"):
                     time.sleep(0.1)
                     pitems = sp.next(pitems)
                 else:
                     break
             playlists.append(Playlist(spotify_id=pid, name=name, tracks=tracks))
-        except Exception:
-            skipped.append(name)
+        except Exception as e:
+            # Log full error for debugging
+            if on_progress:
+                on_progress(f"Skipped '{name}': {e}")
+            skipped.append(f"{name} ({type(e).__name__})")
         time.sleep(0.1)
     return playlists, skipped
 
