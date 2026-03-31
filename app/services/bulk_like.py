@@ -1,6 +1,7 @@
 import time
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from app.config import settings
 
 
@@ -34,16 +35,27 @@ def get_playlists(session: dict) -> list[dict]:
 
 def run_bulk_like(session: dict, playlist_id: str) -> None:
     state = session["bulk_like_state"]
+    # Check if resuming from a previous run
+    previously_liked = set(state.get("already_liked_ids", []))
+    resuming = len(previously_liked) > 0
+
     state.update({
         "phase": "Starting...",
         "total": 0,
         "processed": 0,
         "liked": 0,
+        "skipped": 0,
         "failed": 0,
+        "quota_hit": False,
         "done": False,
         "error": None,
         "log": [],
+        "already_liked_ids": list(previously_liked),
+        "playlist_id": playlist_id,
     })
+
+    if resuming:
+        state["log"].append(f"Resuming — {len(previously_liked)} songs already liked, skipping those")
 
     try:
         youtube = _get_youtube(session)
@@ -64,9 +76,6 @@ def run_bulk_like(session: dict, playlist_id: str) -> None:
                 })
             request = youtube.playlistItems().list_next(request, response)
 
-        state["total"] = len(videos)
-        state["log"].append(f"Found {len(videos)} tracks")
-
         # Deduplicate
         seen = set()
         unique = []
@@ -74,27 +83,58 @@ def run_bulk_like(session: dict, playlist_id: str) -> None:
             if v["videoId"] not in seen:
                 seen.add(v["videoId"])
                 unique.append(v)
-        if len(unique) < len(videos):
-            state["log"].append(f"Skipping {len(videos) - len(unique)} duplicates")
-            state["total"] = len(unique)
+
+        # Filter out already liked (from previous run)
+        remaining = [v for v in unique if v["videoId"] not in previously_liked]
+
+        state["total"] = len(remaining)
+        state["log"].append(f"Found {len(videos)} tracks ({len(unique)} unique, {len(remaining)} to like)")
+
+        if not remaining:
+            state["phase"] = "Complete!"
+            state["done"] = True
+            state["log"].append("All songs already liked!")
+            return
 
         # Like each video
         state["phase"] = "Liking songs..."
-        for i, v in enumerate(unique):
-            state["phase"] = f"Liking ({i+1}/{len(unique)}): {v['title']}"
+        for i, v in enumerate(remaining):
+            state["phase"] = f"Liking ({i+1}/{len(remaining)}): {v['title']}"
             state["processed"] = i + 1
             try:
                 youtube.videos().rate(id=v["videoId"], rating="like").execute()
                 state["liked"] += 1
+                state["already_liked_ids"].append(v["videoId"])
+            except HttpError as e:
+                if "quotaExceeded" in str(e):
+                    state["quota_hit"] = True
+                    state["log"].append(
+                        f"Quota limit reached after {state['liked']} likes. "
+                        f"{len(remaining) - i - 1} songs remaining. "
+                        f"Quota resets at midnight Pacific Time — come back and hit Resume."
+                    )
+                    break
+                state["failed"] += 1
+                if state["failed"] <= 10:
+                    state["log"].append(f"Failed: {v['title']} ({e})")
             except Exception as e:
                 state["failed"] += 1
                 if state["failed"] <= 10:
                     state["log"].append(f"Failed: {v['title']} ({e})")
             time.sleep(0.15)
 
-        state["phase"] = "Complete!"
+        if state["quota_hit"]:
+            state["phase"] = "Paused — quota limit reached"
+        else:
+            state["phase"] = "Complete!"
         state["done"] = True
-        state["log"].append(f"Done! Liked {state['liked']}/{len(unique)} songs. {state['failed']} failed.")
+
+        total_liked = len(state["already_liked_ids"])
+        state["log"].append(
+            f"{'Paused' if state['quota_hit'] else 'Done'}! "
+            f"Liked {total_liked}/{len(unique)} total songs. "
+            f"{state['failed']} failed."
+        )
 
     except Exception as e:
         import traceback

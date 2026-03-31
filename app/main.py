@@ -211,7 +211,10 @@ async def bulk_like_start(request: Request, response: Response):
     playlist_id = body.get("playlist_id")
     if not playlist_id:
         return JSONResponse({"error": "No playlist_id"}, status_code=400)
-    session["bulk_like_state"] = {}
+    # Preserve already_liked_ids from previous run for resume support
+    prev_state = session.get("bulk_like_state", {})
+    prev_liked = prev_state.get("already_liked_ids", []) if prev_state.get("playlist_id") == playlist_id else []
+    session["bulk_like_state"] = {"already_liked_ids": prev_liked}
     thread = threading.Thread(target=run_bulk_like, args=(session, playlist_id), daemon=True)
     thread.start()
     return {"status": "started"}
