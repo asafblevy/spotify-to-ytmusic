@@ -4,165 +4,168 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>YTMusic Playlist Dedup</title>
+  <title>Playlist Dedup</title>
   <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .step { margin-bottom: 20px; }
+    .step-num {
+      display: inline-block;
+      width: 28px; height: 28px;
+      background: #333; border-radius: 50%;
+      text-align: center; line-height: 28px;
+      font-weight: 700; font-size: 0.85rem;
+      margin-right: 8px; color: #fff;
+    }
+    .step h3 { display: flex; align-items: center; margin-bottom: 8px; }
+    .step p { color: #aaa; font-size: 0.9rem; margin-bottom: 8px; }
+    pre {
+      background: #111; border-radius: 8px; padding: 14px;
+      font-size: 0.75rem; overflow-x: auto; color: #4caf50;
+      line-height: 1.4; position: relative;
+      white-space: pre-wrap; word-break: break-all;
+    }
+    .copy-btn {
+      position: absolute; top: 8px; right: 8px;
+      background: #333; border: none; color: #fff;
+      padding: 4px 10px; border-radius: 6px; font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .copy-btn:active { background: #4caf50; }
+    .pre-wrap { position: relative; }
+  </style>
 </head>
 <body>
   <h1>YouTube Music Dedup</h1>
-  <p class="subtitle">Remove duplicate songs from all your playlists</p>
+  <p class="subtitle">Remove duplicate songs from a playlist</p>
 
-  <!-- Auth Section -->
-  <div id="auth-section" class="section">
-    <div class="card">
-      <h3><span class="yt-color">&#9679;</span> YouTube Music</h3>
-      <div id="yt-disconnected">
-        <button class="btn btn-yt" onclick="startYTAuth()">Connect YouTube Music</button>
+  <div class="card">
+    <div class="step">
+      <h3><span class="step-num">1</span> Open your playlist</h3>
+      <p>Go to <a href="https://music.youtube.com/library/playlists" target="_blank" style="color:#64b5f6">YouTube Music</a> and open the playlist you want to deduplicate.</p>
+    </div>
+
+    <div class="step">
+      <h3><span class="step-num">2</span> Open browser console</h3>
+      <p>Press F12 (or Cmd+Option+J on Mac), then click the Console tab.</p>
+    </div>
+
+    <div class="step">
+      <h3><span class="step-num">3</span> Paste and run this script</h3>
+      <p>It scrolls to load all songs, finds duplicates by title+artist, and removes them via the menu.</p>
+      <div class="pre-wrap">
+        <button class="copy-btn" onclick="copyScript('dedup-script')">Copy</button>
+        <pre id="dedup-script">async function dedupPlaylist() {
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  // Step 1: Scroll to load all songs
+  console.log('Scrolling to load all songs...');
+  let last = 0;
+  while (true) {
+    window.scrollTo(0, document.body.scrollHeight);
+    await sleep(1500);
+    const current = document.querySelectorAll(
+      'ytmusic-responsive-list-item-renderer'
+    ).length;
+    console.log('Loaded ' + current + ' songs...');
+    if (current === last) break;
+    last = current;
+  }
+
+  const rows = [...document.querySelectorAll(
+    'ytmusic-responsive-list-item-renderer'
+  )];
+  console.log('Total songs: ' + rows.length);
+
+  // Step 2: Find duplicates
+  const seen = new Set();
+  const dupes = [];
+  for (const row of rows) {
+    const title = row.querySelector(
+      '.title-column yt-formatted-string'
+    )?.textContent?.trim() || '';
+    const artist = row.querySelector(
+      '.secondary-flex-columns yt-formatted-string'
+    )?.textContent?.trim() || '';
+    const key = title.toLowerCase() + '|||' + artist.toLowerCase();
+    if (seen.has(key)) {
+      dupes.push({ row, title, artist });
+    } else {
+      seen.add(key);
+    }
+  }
+
+  console.log('Found ' + dupes.length + ' duplicates');
+  if (dupes.length === 0) {
+    console.log('No duplicates found!');
+    return;
+  }
+
+  // Step 3: Remove duplicates (from bottom to top to avoid index shifting)
+  dupes.reverse();
+  let removed = 0;
+  for (const dupe of dupes) {
+    // Scroll the row into view
+    dupe.row.scrollIntoView({ block: 'center' });
+    await sleep(300);
+
+    // Click the 3-dot menu
+    const menuBtn = dupe.row.querySelector(
+      'ytmusic-menu-renderer yt-button-shape button'
+    );
+    if (!menuBtn) { console.log('No menu for: ' + dupe.title); continue; }
+    menuBtn.click();
+    await sleep(400);
+
+    // Find and click "Remove from playlist"
+    const menuItems = document.querySelectorAll(
+      'tp-yt-paper-listbox ytmusic-menu-service-item-renderer'
+    );
+    let found = false;
+    for (const item of menuItems) {
+      const text = item.textContent.toLowerCase();
+      if (text.includes('remove from playlist') ||
+          text.includes('הסרה מהפלייליסט') ||
+          text.includes('הסר')) {
+        item.click();
+        removed++;
+        console.log('Removed (' + removed + '/' + dupes.length +
+          '): ' + dupe.title + ' - ' + dupe.artist);
+        found = true;
+        await sleep(500);
+        break;
+      }
+    }
+    if (!found) {
+      // Close menu if remove wasn't found
+      document.body.click();
+      await sleep(200);
+      console.log('Could not find remove option for: ' + dupe.title);
+    }
+  }
+  console.log('Done! Removed ' + removed + ' duplicates.');
+}
+dedupPlaylist();</pre>
       </div>
-      <div id="yt-device-code" class="device-code hidden">
-        <p>Go to this link and enter the code:</p>
-        <a id="yt-link" href="#" target="_blank"></a>
-        <div class="code" id="yt-code"></div>
-        <div class="hint"><span class="spinner"></span> Waiting for authorization...</div>
-      </div>
-      <div id="yt-connected" class="connected yt-connected hidden">
-        &#10003; Connected to YouTube Music
-      </div>
+    </div>
+
+    <div class="step">
+      <h3><span class="step-num">4</span> Wait</h3>
+      <p>Keep the tab open. It removes one duplicate at a time. Progress is logged in the console.</p>
     </div>
   </div>
 
-  <!-- Ready Section -->
-  <div id="ready-section" class="section hidden">
-    <div class="card">
-      <h3>Ready to Deduplicate</h3>
-      <p style="color:#aaa;font-size:0.9rem;margin-bottom:16px">
-        This will scan all your YouTube Music playlists and remove duplicate songs.
-        The first occurrence of each song is kept.
-      </p>
-      <button class="btn btn-transfer" onclick="startDedup()">Remove Duplicates</button>
-    </div>
-  </div>
-
-  <!-- Progress Section -->
-  <div id="progress-section" class="section hidden">
-    <div class="card">
-      <h3>Deduplicating...</h3>
-      <div class="phase-text" id="phase-text">Starting...</div>
-      <div class="progress-bar"><div class="fill" id="progress-fill" style="width:0%"></div></div>
-      <div class="counters">
-        <span>Playlists: <strong id="cnt-playlists">0</strong></span>
-        <span class="failed">Removed: <strong id="cnt-removed">0</strong></span>
-      </div>
-      <div class="log" id="log"></div>
-    </div>
-  </div>
-
-  <!-- Done Section -->
-  <div id="done-section" class="section hidden">
-    <div class="card">
-      <h3 id="done-title">Dedup Complete</h3>
-      <div id="done-body" class="counters" style="margin-bottom:12px">
-        <span>Removed: <strong id="final-removed">0</strong> duplicates</span>
-      </div>
-      <div class="log" id="done-log"></div>
-    </div>
-    <a href="/" class="btn btn-logout" style="display:block;text-align:center;text-decoration:none;margin-top:12px">Back to Transfer</a>
-  </div>
+  <a href="/" class="btn btn-logout" style="display:block;text-align:center;text-decoration:none;margin-top:16px">Back to Transfer</a>
 
   <script>
-    let ytPollTimer = null;
-
-    async function init() {
-      const res = await fetch("/auth/status");
-      const data = await res.json();
-      if (data.ytmusic) {
-        document.getElementById("yt-disconnected").classList.add("hidden");
-        document.getElementById("yt-connected").classList.remove("hidden");
-        document.getElementById("ready-section").classList.remove("hidden");
-      }
-    }
-
-    async function startYTAuth() {
-      const res = await fetch("/auth/ytmusic/start", { method: "POST" });
-      const data = await res.json();
-      document.getElementById("yt-disconnected").classList.add("hidden");
-      document.getElementById("yt-device-code").classList.remove("hidden");
-      document.getElementById("yt-code").textContent = data.user_code;
-      const link = document.getElementById("yt-link");
-      link.href = data.verification_url;
-      link.textContent = data.verification_url;
-      ytPollTimer = setInterval(pollYTAuth, 5000);
-    }
-
-    async function pollYTAuth() {
-      const res = await fetch("/auth/ytmusic/poll");
-      const data = await res.json();
-      if (data.status === "complete") {
-        clearInterval(ytPollTimer);
-        document.getElementById("yt-device-code").classList.add("hidden");
-        document.getElementById("yt-connected").classList.remove("hidden");
-        document.getElementById("ready-section").classList.remove("hidden");
-      }
-    }
-
-    async function startDedup() {
-      document.getElementById("ready-section").classList.add("hidden");
-      document.getElementById("auth-section").classList.add("hidden");
-      document.getElementById("progress-section").classList.remove("hidden");
-
-      await fetch("/dedup/start", { method: "POST" });
-
-      const evtSource = new EventSource("/dedup/progress");
-      evtSource.addEventListener("progress", (e) => {
-        const state = JSON.parse(e.data);
-        updateProgress(state);
-        if (state.done) {
-          evtSource.close();
-          showDone(state);
-        }
+    function copyScript(id) {
+      const el = document.getElementById(id);
+      const text = el.textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = el.parentElement.querySelector('.copy-btn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 2000);
       });
-      evtSource.onerror = () => evtSource.close();
     }
-
-    function updateProgress(state) {
-      document.getElementById("phase-text").textContent = state.phase || "Working...";
-      const total = state.total_playlists || 1;
-      const pct = Math.round((state.processed_playlists / total) * 100);
-      document.getElementById("progress-fill").style.width = pct + "%";
-      document.getElementById("cnt-playlists").textContent =
-        (state.processed_playlists || 0) + "/" + total;
-      document.getElementById("cnt-removed").textContent = state.total_removed || 0;
-
-      const logEl = document.getElementById("log");
-      const logs = state.log || [];
-      logEl.innerHTML = logs.map(l => "<div>" + esc(l) + "</div>").join("");
-      logEl.scrollTop = logEl.scrollHeight;
-    }
-
-    function showDone(state) {
-      document.getElementById("progress-section").classList.add("hidden");
-      document.getElementById("done-section").classList.remove("hidden");
-
-      if (state.error) {
-        document.getElementById("done-title").textContent = "Dedup Failed";
-        document.getElementById("done-title").style.color = "#ef5350";
-        document.getElementById("done-body").innerHTML =
-          '<span style="color:#ef5350">' + esc(state.error) + '</span>';
-      } else {
-        document.getElementById("final-removed").textContent = state.total_removed || 0;
-      }
-
-      const logs = state.log || [];
-      const logEl = document.getElementById("done-log");
-      logEl.innerHTML = logs.map(l => "<div>" + esc(l) + "</div>").join("");
-    }
-
-    function esc(s) {
-      const d = document.createElement("div");
-      d.textContent = s;
-      return d.innerHTML;
-    }
-
-    init();
   </script>
 </body>
 </html>

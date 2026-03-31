@@ -13,8 +13,6 @@ from app.auth.spotify_auth import get_spotify_oauth, get_spotify_client
 from app.auth.ytmusic_auth import start_device_flow, poll_device_flow, get_ytmusic_client
 from app.services.spotify_service import fetch_liked_songs, fetch_playlists, fetch_followed_artists
 from app.services.transfer import run_transfer
-from app.services.dedup import run_dedup
-from app.services.bulk_like import get_playlists as get_yt_playlists, run_bulk_like
 
 app = FastAPI(title="Spotify to YouTube Music Transfer")
 
@@ -84,7 +82,6 @@ async def library_preview(request: Request, response: Response):
         return JSONResponse({"error": "Spotify not connected"}, status_code=401)
 
     try:
-        # Quick counts — just fetch first page to get totals
         liked = sp.current_user_saved_tracks(limit=1)
         liked_total = liked.get("total", 0) if liked else 0
 
@@ -113,7 +110,6 @@ async def transfer_start(request: Request, response: Response):
         "playlists": body.get("playlists", True),
         "artists": body.get("artists", True),
     }
-    # Run transfer in a background thread (it's synchronous/blocking)
     session["transfer_state"] = {}
     thread = threading.Thread(target=run_transfer, args=(session, options), daemon=True)
     thread.start()
@@ -122,7 +118,6 @@ async def transfer_start(request: Request, response: Response):
 
 @app.get("/transfer/progress")
 async def transfer_progress(request: Request):
-    # Use get_session directly (read-only, no new cookie needed for SSE)
     session = get_session(request)
     if not session:
         async def error_gen():
@@ -130,7 +125,6 @@ async def transfer_progress(request: Request):
         return EventSourceResponse(error_gen())
 
     async def event_generator():
-        # Wait briefly for transfer thread to initialize state
         for _ in range(10):
             state = session.get("transfer_state")
             if state and state.get("phase"):
@@ -147,122 +141,18 @@ async def transfer_progress(request: Request):
     return EventSourceResponse(event_generator())
 
 
-# --- Dedup ---
+# --- Dedup (client-side, just serves the page) ---
 @app.get("/dedup", response_class=HTMLResponse)
 async def dedup_page():
     with open("app/static/dedup.html") as f:
         return f.read()
 
 
-@app.post("/dedup/start")
-async def dedup_start(request: Request, response: Response):
-    session = ensure_session(request, response)
-    session["dedup_state"] = {}
-    thread = threading.Thread(target=run_dedup, args=(session,), daemon=True)
-    thread.start()
-    return {"status": "started"}
-
-
-@app.get("/dedup/progress")
-async def dedup_progress(request: Request):
-    session = get_session(request)
-    if not session:
-        async def error_gen():
-            yield {"event": "progress", "data": json.dumps({"done": True, "error": "No session found."})}
-        return EventSourceResponse(error_gen())
-
-    async def event_generator():
-        for _ in range(10):
-            state = session.get("dedup_state")
-            if state and state.get("phase"):
-                break
-            await asyncio.sleep(0.5)
-        while True:
-            state = session.get("dedup_state", {})
-            yield {"event": "progress", "data": json.dumps(state)}
-            if state.get("done"):
-                break
-            await asyncio.sleep(1)
-
-    return EventSourceResponse(event_generator())
-
-
-# --- Bulk Like ---
+# --- Bulk Like (client-side, just serves the page) ---
 @app.get("/bulk-like", response_class=HTMLResponse)
 async def bulk_like_page():
     with open("app/static/bulk-like.html") as f:
         return f.read()
-
-
-@app.get("/bulk-like/playlists")
-async def bulk_like_playlists(request: Request, response: Response):
-    session = ensure_session(request, response)
-    try:
-        playlists = get_yt_playlists(session)
-        return {"playlists": playlists}
-    except Exception as e:
-        return {"error": f"{type(e).__name__}: {e}"}
-
-
-@app.get("/bulk-like/videos")
-async def bulk_like_videos(request: Request, response: Response, playlist_id: str = ""):
-    """Fetch all video IDs in a playlist (server-side, minimal quota use)."""
-    session = ensure_session(request, response)
-    if not playlist_id:
-        return JSONResponse({"error": "No playlist_id"}, status_code=400)
-    try:
-        from app.services.bulk_like import _get_youtube
-        youtube = _get_youtube(session)
-        videos = []
-        req = youtube.playlistItems().list(
-            part="snippet,contentDetails", playlistId=playlist_id, maxResults=50
-        )
-        while req:
-            resp = req.execute()
-            for item in resp.get("items", []):
-                videos.append({
-                    "videoId": item["contentDetails"]["videoId"],
-                    "title": item["snippet"].get("title", "Unknown"),
-                })
-            req = youtube.playlistItems().list_next(req, resp)
-        return {"videos": videos}
-    except Exception as e:
-        return {"error": f"{type(e).__name__}: {e}"}
-
-
-@app.get("/auth/ytmusic/token")
-async def ytmusic_token(request: Request, response: Response):
-    """Return the current access token for client-side API calls."""
-    session = ensure_session(request, response)
-    token = session.get("ytmusic_token", {})
-    return {"access_token": token.get("access_token")}
-
-
-@app.post("/auth/ytmusic/refresh")
-async def ytmusic_refresh(request: Request, response: Response):
-    """Refresh the YouTube OAuth token and return the new access token."""
-    session = ensure_session(request, response)
-    token = session.get("ytmusic_token", {})
-    refresh_token = token.get("refresh_token")
-    if not refresh_token:
-        return JSONResponse({"error": "No refresh token"}, status_code=401)
-    try:
-        from google.oauth2.credentials import Credentials
-        creds = Credentials(
-            token=token.get("access_token"),
-            refresh_token=refresh_token,
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=settings.google_client_id,
-            client_secret=settings.google_client_secret,
-        )
-        import google.auth.transport.requests
-        creds.refresh(google.auth.transport.requests.Request())
-        # Update session
-        session["ytmusic_token"]["access_token"] = creds.token
-        save_yt_token(response, session["ytmusic_token"])
-        return {"access_token": creds.token}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 # --- Logout ---
@@ -289,7 +179,7 @@ async def debug_session(request: Request, response: Response):
 
 @app.get("/debug/search")
 async def debug_search(q: str = "PinkPantheress Stateside"):
-    """Test yt-dlp search. No auth needed. Usage: /debug/search?q=artist+title"""
+    """Test yt-dlp search. No auth needed."""
     try:
         import yt_dlp
         opts = {"quiet": True, "no_warnings": True, "extract_flat": True}
@@ -297,7 +187,6 @@ async def debug_search(q: str = "PinkPantheress Stateside"):
             results = ydl.extract_info(f"ytsearch3:{q}", download=False)
         return {
             "query": q,
-            "api": "yt-dlp",
             "results": [
                 {
                     "videoId": e.get("id"),
